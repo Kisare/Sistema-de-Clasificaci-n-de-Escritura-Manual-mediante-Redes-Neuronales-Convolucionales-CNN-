@@ -1,0 +1,120 @@
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from sklearn.metrics import confusion_matrix, classification_report
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import cv2
+
+
+IMG_HEIGHT = 64
+IMG_WIDTH = 64
+BATCH_SIZE = 32
+DATA_DIR = 'mi_dataset' 
+
+
+
+def cargar_datos():
+    
+    train_ds = tf.keras.utils.image_dataset_from_directory(
+        os.path.join(DATA_DIR, 'entrenamiento'),
+        seed=123,
+        image_size=(IMG_HEIGHT, IMG_WIDTH),
+        batch_size=BATCH_SIZE,
+        color_mode='grayscale' 
+    )
+    
+    
+    val_ds = tf.keras.utils.image_dataset_from_directory(
+        os.path.join(DATA_DIR, 'validacion'),
+        seed=123,
+        image_size=(IMG_HEIGHT, IMG_WIDTH),
+        batch_size=BATCH_SIZE,
+        color_mode='grayscale',
+        shuffle=False 
+    )
+    return train_ds, val_ds
+
+
+def process(image, label):
+    image = tf.cast(image / 255. ,tf.float32)
+    return image, label
+
+try:
+    train_ds, val_ds = cargar_datos()
+    class_names = train_ds.class_names
+    print(f"Clases detectadas: {class_names}")
+    
+    train_ds = train_ds.map(process)
+    val_ds = val_ds.map(process)
+except:
+    print("ERROR: No se encontró la carpeta 'mi_dataset'. Por favor crea la estructura de carpetas.")
+    
+    import numpy as np
+    print("Generando datos sintéticos de prueba...")
+    X_dummy = np.random.rand(100, 64, 64, 1)
+    y_dummy = np.random.randint(0, 3, 100)
+    train_ds = tf.data.Dataset.from_tensor_slices((X_dummy, y_dummy)).batch(32)
+    val_ds = tf.data.Dataset.from_tensor_slices((X_dummy, y_dummy)).batch(32)
+    class_names = ['A', 'B', 'C']
+
+
+
+
+
+
+model = models.Sequential([
+    
+    layers.Input(shape=(IMG_HEIGHT, IMG_WIDTH, 1)),
+    
+    
+    layers.Conv2D(32, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    
+    
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    
+    
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    
+    
+    layers.Flatten(),
+    layers.Dense(64, activation='relu'),
+    layers.Dense(len(class_names), activation='softmax') 
+])
+
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+model.summary()
+
+
+history = model.fit(train_ds, epochs=10, validation_data=val_ds)
+
+
+
+y_true = []
+y_pred = []
+
+for images, labels in val_ds:
+    predictions = model.predict(images)
+    y_true.extend(labels.numpy())
+    y_pred.extend(np.argmax(predictions, axis=1))
+
+
+cm = confusion_matrix(y_true, y_pred)
+
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=class_names, yticklabels=class_names)
+plt.title('Matriz de Confusión: Clasificación de Tu Escritura')
+plt.ylabel('Letra Real (Tu escritura)')
+plt.xlabel('Predicción del Modelo')
+plt.show()
+
+
+print(classification_report(y_true, y_pred, target_names=class_names))
